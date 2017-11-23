@@ -17,7 +17,7 @@
 //!
 //! A single [`Worker`] runs in its own thread, to be implemented according to the trait:
 //!
-//! ```rust,ignore
+//! ```rust
 //! pub trait Worker {
 //!     type Input: Send;
 //!     type Output: Send;
