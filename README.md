@@ -20,6 +20,11 @@ pub trait Worker {
 
 ## Usage
 
+```toml
+[dependencies]
+workerpool = "1.0"
+```
+
 This crate provides `Pool<W> where W: Worker`. With a pool, there are four
 primary functions of interest:
 - `Pool::<MyWorker>::new(n_threads)` creates a new pool for a particular `Worker`.
