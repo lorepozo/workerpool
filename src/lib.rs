@@ -1010,10 +1010,11 @@ pub mod thunk {
         }
     }
 
-    /// [`ThunkWorker`] implements [`Worker`] that executes on [`Thunk<T>`].
+    /// [`ThunkWorker<T>`] implements [`Worker`] that executes on [`Thunk<T>`].
     ///
-    /// [`Worker`]: ../trait.Worker.html
     /// [`Thunk<T>`]: struct.Thunk.html
+    /// [`ThunkWorker<T>`]: struct.ThunkWorker.html
+    /// [`Worker`]: ../trait.Worker.html
     pub struct ThunkWorker<T>(PhantomData<T>);
     impl<T: Send + 'static> super::Worker for ThunkWorker<T> {
         type Input = Thunk<'static, T>;
