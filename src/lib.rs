@@ -436,7 +436,7 @@ impl Builder {
         }
 
         Pool {
-            jobs: tx,
+            jobs: Arc::new(Mutex::new(tx)),
             shared_data: shared_data,
         }
     }
@@ -483,7 +483,7 @@ where
     //
     // This is the only such Sender, so when it is dropped all subthreads will
     // quit.
-    jobs: Sender<(T::Input, Option<Sender<T::Output>>)>,
+    jobs: Arc<Mutex<Sender<(T::Input, Option<Sender<T::Output>>)>>>,
     shared_data: Arc<PoolSharedData<T>>,
 }
 
@@ -572,9 +572,11 @@ impl<T: Worker> Pool<T> {
     pub fn execute(&self, inp: T::Input) {
         self.shared_data.queued_count.fetch_add(1, Ordering::SeqCst);
         let job = (inp, None);
-        self.jobs.send(job).expect(
-            "Pool::execute unable to send job into queue.",
-        );
+        self.jobs
+            .lock()
+            .expect("Pool is poisoned")
+            .send(job)
+            .expect("Pool::execute unable to send job into queue.");
     }
 
     /// Executes with the input on a worker in the pool.
@@ -603,9 +605,11 @@ impl<T: Worker> Pool<T> {
     pub fn execute_to(&self, tx: Sender<T::Output>, inp: T::Input) {
         self.shared_data.queued_count.fetch_add(1, Ordering::SeqCst);
         let job = (inp, Some(tx));
-        self.jobs.send(job).expect(
-            "Pool::execute unable to send job into queue.",
-        );
+        self.jobs
+            .lock()
+            .expect("Pool is poisoned")
+            .send(job)
+            .expect("Pool::execute unable to send job into queue.");
     }
 
     /// Returns the number of jobs waiting to executed in the pool.
