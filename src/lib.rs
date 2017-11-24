@@ -122,7 +122,7 @@
 //! assert_eq!(output, b"abcdefgh");
 //! # }
 //! ```
-//! [`Worker`]: struct.Worker.html
+//! [`Worker`]: trait.Worker.html
 //! [`workerpool::thunk`]: thunk/
 //! [`ThunkWorker<T>`]: thunk/struct.ThunkWorker.html
 //! [`Thunk::of`]: thunk/struct.Thunk.html#method.of
