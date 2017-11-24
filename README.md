@@ -2,7 +2,7 @@
 
 [![doc.rs](https://docs.rs/workerpool/badge.svg)](https://docs.rs/workerpool)
 
-A worker threadpool used to execute a number of jabs atop stateful workers
+A worker threadpool used to execute a number of jobs atop stateful workers
 in parallel. It spawns a specified number of worker threads and replenishes
 the pool if any worker threads panic.
 
