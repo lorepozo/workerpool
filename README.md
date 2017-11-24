@@ -52,11 +52,11 @@ fn main() {
     let pool = Pool::<ThunkWorker<i32>>::new(n_workers);
     
     let (tx, rx) = channel();
-    for _ in 0..n_jobs {
-        pool.execute_to(tx.clone(), Thunk::of(|| 1i32));
+    for i in 0..n_jobs {
+        pool.execute_to(tx.clone(), Thunk::of(move || i * i));
     }
     
-    assert_eq!(8, rx.iter().take(n_jobs).fold(0, |a, b| a + b));
+    assert_eq!(140, rx.iter().take(n_jobs as usize).sum());
 }
 ```
 
