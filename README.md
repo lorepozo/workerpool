@@ -1,5 +1,6 @@
 # workerpool
 
+[![Build Status](https://travis-ci.org/lucasem/workerpool.svg?branch=master)](https://travis-ci.org/lucasem/workerpool)
 [![doc.rs](https://docs.rs/workerpool/badge.svg)](https://docs.rs/workerpool)
 
 A worker threadpool used to execute a number of jobs atop stateful workers
