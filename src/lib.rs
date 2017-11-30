@@ -18,11 +18,10 @@
 //! A single [`Worker`] runs in its own thread, to be implemented according to the trait:
 //!
 //! ```rust
-//! pub trait Worker {
+//! pub trait Worker : Default {
 //!     type Input: Send;
 //!     type Output: Send;
 //!
-//!     fn new() -> Self;
 //!     fn execute(&mut self, Self::Input) -> Self::Output;
 //! }
 //! ```
@@ -72,11 +71,8 @@
 //!     stdin: ChildStdin,
 //!     stdout: BufReader<ChildStdout>,
 //! }
-//! impl Worker for LineDelimitedProcess {
-//!     type Input = Box<[u8]>;
-//!     type Output = io::Result<String>;
-//!
-//!     fn new() -> Self {
+//! impl Default for LineDelimitedProcess {
+//!     fn default() -> Self {
 //!         let child = Command::new("cat")
 //!             .stdin(Stdio::piped())
 //!             .stdout(Stdio::piped())
@@ -88,6 +84,11 @@
 //!             stdout: BufReader::new(child.stdout.unwrap()),
 //!         }
 //!     }
+//! }
+//! impl Worker for LineDelimitedProcess {
+//!     type Input = Box<[u8]>;
+//!     type Output = io::Result<String>;
+//!
 //!     fn execute(&mut self, inp: Self::Input) -> Self::Output {
 //!         self.stdin.write_all(&*inp)?;
 //!         self.stdin.write_all(b"\n")?;
@@ -137,11 +138,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 /// Abstraction of a worker which executes tasks in its own thread.
-pub trait Worker: 'static {
+pub trait Worker: Default + 'static {
     type Input: Send;
     type Output: Send;
 
-    fn new() -> Self;
     fn execute(&mut self, Self::Input) -> Self::Output;
 }
 
@@ -159,8 +159,8 @@ where
     builder
         .spawn(move || {
             // Will spawn a new thread on panic unless it is cancelled.
-            let sentinel = Sentinel::<T>::new(shared_data.clone());
-            let mut executor = T::new();
+            let sentinel = Sentinel::<T>::new(Arc::clone(&shared_data));
+            let mut executor = T::default();
 
             loop {
                 // Shutdown this thread if the pool has become smaller
@@ -189,9 +189,8 @@ where
 
                 let output = executor.execute(job.0);
                 if let Some(tx) = job.1 {
-                    match tx.send(output) {
-                        Err(..) => break,
-                        _ => (),
+                    if let Err(..) = tx.send(output) {
+                        break;
                     }
                 };
 
@@ -234,7 +233,7 @@ impl<T: Worker> Drop for Sentinel<T> {
                 self.shared_data.panic_count.fetch_add(1, Ordering::SeqCst);
             }
             self.shared_data.no_work_notify_all();
-            spawn_in_pool::<T>(self.shared_data.clone())
+            spawn_in_pool::<T>(Arc::clone(&self.shared_data))
         }
     }
 }
@@ -432,7 +431,7 @@ impl Builder {
 
         // Threadpool threads
         for _ in 0..num_threads {
-            spawn_in_pool::<T>(shared_data.clone());
+            spawn_in_pool::<T>(Arc::clone(&shared_data));
         }
 
         Pool {
@@ -442,12 +441,14 @@ impl Builder {
     }
 }
 
+type Job<T: Worker> = (T::Input, Option<Sender<T::Output>>);
+
 struct PoolSharedData<T>
 where
     T: Worker,
 {
     name: Option<String>,
-    job_receiver: Mutex<Receiver<(T::Input, Option<Sender<T::Output>>)>>,
+    job_receiver: Mutex<Receiver<Job<T>>>,
     empty_trigger: Mutex<()>,
     empty_condvar: Condvar,
     join_generation: AtomicUsize,
@@ -466,7 +467,7 @@ impl<T: Worker> PoolSharedData<T> {
     /// Notify all observers joining this pool if there is no more work to do.
     fn no_work_notify_all(&self) {
         if !self.has_work() {
-            *self.empty_trigger.lock().expect(
+            let _lock = self.empty_trigger.lock().expect(
                 "Unable to notify all joining threads",
             );
             self.empty_condvar.notify_all();
@@ -483,7 +484,7 @@ where
     //
     // This is the only such Sender, so when it is dropped all subthreads will
     // quit.
-    jobs: Arc<Mutex<Sender<(T::Input, Option<Sender<T::Output>>)>>>,
+    jobs: Arc<Mutex<Sender<Job<T>>>>,
     shared_data: Arc<PoolSharedData<T>>,
 }
 
@@ -768,7 +769,7 @@ impl<T: Worker> Pool<T> {
         if let Some(num_spawn) = num_threads.checked_sub(prev_num_threads) {
             // Spawn new threads
             for _ in 0..num_spawn {
-                spawn_in_pool::<T>(self.shared_data.clone());
+                spawn_in_pool::<T>(Arc::clone(&self.shared_data));
             }
         }
     }
@@ -810,8 +811,8 @@ impl<T: Worker> Pool<T> {
     /// ```
     pub fn join(&self) {
         // fast path requires no mutex
-        if self.shared_data.has_work() == false {
-            return ();
+        if !self.shared_data.has_work() {
+            return;
         }
 
         let generation = self.shared_data.join_generation.load(Ordering::SeqCst);
@@ -875,8 +876,8 @@ impl<T: Worker> Clone for Pool<T> {
     /// ```
     fn clone(&self) -> Pool<T> {
         Pool {
-            jobs: self.jobs.clone(),
-            shared_data: self.shared_data.clone(),
+            jobs: Arc::clone(&self.jobs),
+            shared_data: Arc::clone(&self.shared_data),
         }
     }
 }
@@ -1016,12 +1017,14 @@ pub mod thunk {
     /// [`ThunkWorker<T>`]: struct.ThunkWorker.html
     /// [`Worker`]: ../trait.Worker.html
     pub struct ThunkWorker<T>(PhantomData<T>);
+    impl<T> Default for ThunkWorker<T> {
+        fn default() -> Self {
+            ThunkWorker(PhantomData)
+        }
+    }
     impl<T: Send + 'static> super::Worker for ThunkWorker<T> {
         type Input = Thunk<'static, T>;
         type Output = T;
-        fn new() -> Self {
-            ThunkWorker(PhantomData)
-        }
         fn execute(&mut self, f: Self::Input) -> Self::Output {
             f.0.call_box()
         }

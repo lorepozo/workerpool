@@ -11,11 +11,10 @@ the pool if any worker threads panic.
 A single `Worker` runs in its own thread, to be implemented according to the trait:
 
 ```rust
-pub trait Worker {
+pub trait Worker : Default {
     type Input: Send;
     type Output: Send;
 
-    fn new() -> Self;
     fn execute(&mut self, Self::Input) -> Self::Output;
 }
 ```
@@ -82,11 +81,8 @@ struct LineDelimitedProcess {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
 }
-impl Worker for LineDelimitedProcess {
-    type Input = Box<[u8]>;
-    type Output = io::Result<String>;
-
-    fn new() -> Self {
+impl Default for LineDelimitedProcess {
+    fn default() -> Self {
         let child = Command::new("cat")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -98,6 +94,11 @@ impl Worker for LineDelimitedProcess {
             stdout: BufReader::new(child.stdout.unwrap()),
         }
     }
+}
+impl Worker for LineDelimitedProcess {
+    type Input = Box<[u8]>;
+    type Output = io::Result<String>;
+
     fn execute(&mut self, inp: Self::Input) -> Self::Output {
         self.stdin.write_all(&*inp)?;
         self.stdin.write_all(b"\n")?;
