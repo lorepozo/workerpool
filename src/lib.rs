@@ -441,14 +441,12 @@ impl Builder {
     }
 }
 
-type Job<T: Worker> = (T::Input, Option<Sender<T::Output>>);
-
 struct PoolSharedData<T>
 where
     T: Worker,
 {
     name: Option<String>,
-    job_receiver: Mutex<Receiver<Job<T>>>,
+    job_receiver: Mutex<Receiver<(T::Input, Option<Sender<T::Output>>)>>,
     empty_trigger: Mutex<()>,
     empty_condvar: Condvar,
     join_generation: AtomicUsize,
@@ -484,7 +482,7 @@ where
     //
     // This is the only such Sender, so when it is dropped all subthreads will
     // quit.
-    jobs: Arc<Mutex<Sender<Job<T>>>>,
+    jobs: Arc<Mutex<Sender<(T::Input, Option<Sender<T::Output>>)>>>,
     shared_data: Arc<PoolSharedData<T>>,
 }
 

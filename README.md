@@ -23,7 +23,7 @@ pub trait Worker : Default {
 
 ```toml
 [dependencies]
-workerpool = "1.0"
+workerpool = "1.1"
 ```
 
 This crate provides `Pool<W> where W: Worker`. With a pool, there are four
