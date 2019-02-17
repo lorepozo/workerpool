@@ -15,3 +15,4 @@ categories = ["concurrency", "os"]
 
 [dependencies]
 num_cpus = "1.7"
+parking_lot = "0.7"

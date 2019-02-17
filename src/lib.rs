@@ -130,11 +130,13 @@
 //! [`Thunk<T>`]: thunk/struct.Thunk.html
 
 extern crate num_cpus;
+extern crate parking_lot;
 
+use parking_lot::{Condvar, Mutex};
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 use std::thread;
 
 /// Abstraction of a worker which executes tasks in its own thread.
@@ -172,10 +174,7 @@ where
                 let message = {
                     // Only lock jobs for the time it takes
                     // to get a job, not run it.
-                    let lock = shared_data
-                        .job_receiver
-                        .lock()
-                        .expect("Worker thread unable to lock job_receiver");
+                    let lock = shared_data.job_receiver.lock();
                     lock.recv()
                 };
 
@@ -466,10 +465,7 @@ impl<T: Worker> PoolSharedData<T> {
     /// Notify all observers joining this pool if there is no more work to do.
     fn no_work_notify_all(&self) {
         if !self.has_work() {
-            let _lock = self
-                .empty_trigger
-                .lock()
-                .expect("Unable to notify all joining threads");
+            let _lock = self.empty_trigger.lock();
             self.empty_condvar.notify_all();
         }
     }
@@ -575,7 +571,6 @@ impl<T: Worker> Pool<T> {
         let job = (inp, None);
         self.jobs
             .lock()
-            .expect("Pool is poisoned")
             .send(job)
             .expect("Pool::execute unable to send job into queue.");
     }
@@ -608,7 +603,6 @@ impl<T: Worker> Pool<T> {
         let job = (inp, Some(tx));
         self.jobs
             .lock()
-            .expect("Pool is poisoned")
             .send(job)
             .expect("Pool::execute unable to send job into queue.");
     }
@@ -816,12 +810,12 @@ impl<T: Worker> Pool<T> {
         }
 
         let generation = self.shared_data.join_generation.load(Ordering::SeqCst);
-        let mut lock = self.shared_data.empty_trigger.lock().unwrap();
+        let mut lock = self.shared_data.empty_trigger.lock();
 
         while generation == self.shared_data.join_generation.load(Ordering::Relaxed)
             && self.shared_data.has_work()
         {
-            lock = self.shared_data.empty_condvar.wait(lock).unwrap();
+            self.shared_data.empty_condvar.wait(&mut lock);
         }
 
         // increase generation if we are the first thread to come out of the loop
