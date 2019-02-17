@@ -132,9 +132,9 @@
 extern crate num_cpus;
 
 use std::fmt;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::sync::{Arc, Mutex, Condvar};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
 /// Abstraction of a worker which executes tasks in its own thread.
@@ -172,9 +172,10 @@ where
                 let message = {
                     // Only lock jobs for the time it takes
                     // to get a job, not run it.
-                    let lock = shared_data.job_receiver.lock().expect(
-                        "Worker thread unable to lock job_receiver",
-                    );
+                    let lock = shared_data
+                        .job_receiver
+                        .lock()
+                        .expect("Worker thread unable to lock job_receiver");
                     lock.recv()
                 };
 
@@ -465,9 +466,10 @@ impl<T: Worker> PoolSharedData<T> {
     /// Notify all observers joining this pool if there is no more work to do.
     fn no_work_notify_all(&self) {
         if !self.has_work() {
-            let _lock = self.empty_trigger.lock().expect(
-                "Unable to notify all joining threads",
-            );
+            let _lock = self
+                .empty_trigger
+                .lock()
+                .expect("Unable to notify all joining threads");
             self.empty_condvar.notify_all();
         }
     }
@@ -734,7 +736,7 @@ impl<T: Worker> Pool<T> {
     /// # fn main() {
     /// let mut pool: Pool<ThunkWorker<()>> = Pool::new(4);
     /// for _ in 0..10 {
-    ///     pool.execute(Thunk::of(move || {
+    ///     pool.execute(Thunk::of(|| {
     ///         sleep(Duration::from_secs(100));
     ///     }));
     /// }
@@ -760,10 +762,10 @@ impl<T: Worker> Pool<T> {
     /// ```
     pub fn set_num_threads(&mut self, num_threads: usize) {
         assert!(num_threads >= 1);
-        let prev_num_threads = self.shared_data.max_thread_count.swap(
-            num_threads,
-            Ordering::Release,
-        );
+        let prev_num_threads = self
+            .shared_data
+            .max_thread_count
+            .swap(num_threads, Ordering::Release);
         if let Some(num_spawn) = num_threads.checked_sub(prev_num_threads) {
             // Spawn new threads
             for _ in 0..num_spawn {
@@ -816,8 +818,8 @@ impl<T: Worker> Pool<T> {
         let generation = self.shared_data.join_generation.load(Ordering::SeqCst);
         let mut lock = self.shared_data.empty_trigger.lock().unwrap();
 
-        while generation == self.shared_data.join_generation.load(Ordering::Relaxed) &&
-            self.shared_data.has_work()
+        while generation == self.shared_data.join_generation.load(Ordering::Relaxed)
+            && self.shared_data.has_work()
         {
             lock = self.shared_data.empty_condvar.wait(lock).unwrap();
         }
@@ -880,7 +882,6 @@ impl<T: Worker> Clone for Pool<T> {
     }
 }
 
-
 /// Create a thread pool with one thread per CPU.
 /// On machines with hyperthreading,
 /// this will create one thread per hyperthread.
@@ -889,7 +890,6 @@ impl<T: Worker> Default for Pool<T> {
         Pool::new(num_cpus::get())
     }
 }
-
 
 impl<T: Worker> fmt::Debug for Pool<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -1031,11 +1031,11 @@ pub mod thunk {
 
 #[cfg(test)]
 mod test {
-    use super::{Pool, Builder};
     use super::thunk::{Thunk, ThunkWorker};
-    use std::sync::{Arc, Barrier};
+    use super::{Builder, Pool};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::mpsc::{sync_channel, channel};
+    use std::sync::mpsc::{channel, sync_channel};
+    use std::sync::{Arc, Barrier};
     use std::thread::{self, sleep};
     use std::time::Duration;
 
@@ -1046,7 +1046,7 @@ mod test {
         let new_thread_amount = TEST_TASKS + 8;
         let mut pool = Pool::<ThunkWorker<()>>::new(TEST_TASKS);
         for _ in 0..TEST_TASKS {
-            pool.execute(Thunk::of(move || sleep(Duration::from_secs(23))));
+            pool.execute(Thunk::of(|| sleep(Duration::from_secs(23))));
         }
         sleep(Duration::from_secs(1));
         assert_eq!(pool.active_count(), TEST_TASKS);
@@ -1054,7 +1054,7 @@ mod test {
         pool.set_num_threads(new_thread_amount);
 
         for _ in 0..(new_thread_amount - TEST_TASKS) {
-            pool.execute(Thunk::of(move || sleep(Duration::from_secs(23))));
+            pool.execute(Thunk::of(|| sleep(Duration::from_secs(23))));
         }
         sleep(Duration::from_secs(1));
         assert_eq!(pool.active_count(), new_thread_amount);
@@ -1067,11 +1067,11 @@ mod test {
         let new_thread_amount = 2;
         let mut pool = Pool::<ThunkWorker<()>>::new(TEST_TASKS);
         for _ in 0..TEST_TASKS {
-            pool.execute(Thunk::of(move || { 1 + 1; }));
+            pool.execute(Thunk::of(|| ()));
         }
         pool.set_num_threads(new_thread_amount);
         for _ in 0..new_thread_amount {
-            pool.execute(Thunk::of(move || sleep(Duration::from_secs(23))));
+            pool.execute(Thunk::of(|| sleep(Duration::from_secs(23))));
         }
         sleep(Duration::from_secs(1));
         assert_eq!(pool.active_count(), new_thread_amount);
@@ -1083,7 +1083,7 @@ mod test {
     fn test_active_count() {
         let pool = Pool::<ThunkWorker<()>>::new(TEST_TASKS);
         for _ in 0..2 * TEST_TASKS {
-            pool.execute(Thunk::of(move || loop {
+            pool.execute(Thunk::of(|| loop {
                 sleep(Duration::from_secs(10))
             }));
         }
@@ -1101,7 +1101,9 @@ mod test {
         let (tx, rx) = channel();
         for _ in 0..TEST_TASKS {
             let tx = tx.clone();
-            pool.execute(Thunk::of(move || { tx.send(1).unwrap(); }));
+            pool.execute(Thunk::of(move || {
+                tx.send(1).unwrap();
+            }));
         }
 
         assert_eq!(rx.iter().take(TEST_TASKS).fold(0, |a, b| a + b), TEST_TASKS);
@@ -1119,7 +1121,7 @@ mod test {
 
         // Panic all the existing threads.
         for _ in 0..TEST_TASKS {
-            pool.execute(Thunk::of(move || panic!("Ignore this panic, it must!")));
+            pool.execute(Thunk::of(|| panic!("intentional panic")));
         }
         pool.join();
 
@@ -1129,7 +1131,9 @@ mod test {
         let (tx, rx) = channel();
         for _ in 0..TEST_TASKS {
             let tx = tx.clone();
-            pool.execute(Thunk::of(move || { tx.send(1).unwrap(); }));
+            pool.execute(Thunk::of(move || {
+                tx.send(1).unwrap();
+            }));
         }
 
         assert_eq!(rx.iter().take(TEST_TASKS).fold(0, |a, b| a + b), TEST_TASKS);
@@ -1137,7 +1141,6 @@ mod test {
 
     #[test]
     fn test_should_not_panic_on_drop_if_subtasks_panic_after_drop() {
-
         let pool = Pool::<ThunkWorker<()>>::new(TEST_TASKS);
         let waiter = Arc::new(Barrier::new(TEST_TASKS + 1));
 
@@ -1146,7 +1149,7 @@ mod test {
             let waiter = waiter.clone();
             pool.execute(Thunk::of(move || {
                 waiter.wait();
-                panic!("Ignore this panic, it should!");
+                panic!("intentional panic");
             }));
         }
 
@@ -1171,7 +1174,6 @@ mod test {
             let (b0, b1) = (b0.clone(), b1.clone());
 
             pool.execute(Thunk::of(move || {
-
                 // Wait until the pool has been filled once.
                 if i < TEST_TASKS {
                     b0.wait();
@@ -1231,7 +1233,6 @@ mod test {
         assert_eq!(pool.active_count(), test_tasks_begin);
         b1.wait();
 
-
         b2.wait();
         assert_eq!(pool.active_count(), TEST_TASKS);
         b3.wait();
@@ -1289,7 +1290,7 @@ mod test {
         );
 
         let pool = Pool::<ThunkWorker<()>>::new(4);
-        pool.execute(Thunk::of(move || sleep(Duration::from_secs(5))));
+        pool.execute(Thunk::of(|| sleep(Duration::from_secs(5))));
         sleep(Duration::from_secs(1));
         let debug = format!("{:?}", pool);
         assert_eq!(
@@ -1408,7 +1409,9 @@ mod test {
 
         // This batch of jobs will occupy the pool for some time
         for _ in 0..6 {
-            pool.execute(Thunk::of(move || { sleep(Duration::from_secs(2)); }));
+            pool.execute(Thunk::of(|| {
+                sleep(Duration::from_secs(2));
+            }));
         }
 
         // The following jobs will be inserted into the pool in a random fashion
@@ -1421,15 +1424,13 @@ mod test {
                 let (tx, rx) = channel();
                 for i in 0..42 {
                     let tx = tx.clone();
-                    pool.execute(Thunk::of(
-                        move || { tx.send(i).expect("channel will be waiting"); },
-                    ));
+                    pool.execute(Thunk::of(move || {
+                        tx.send(i).expect("channel will be waiting");
+                    }));
                 }
                 drop(tx);
-                rx.iter().fold(
-                    0,
-                    |accumulator, element| accumulator + element,
-                )
+                rx.iter()
+                    .fold(0, |accumulator, element| accumulator + element)
             })
         };
         let t1 = {
@@ -1441,29 +1442,25 @@ mod test {
                 let (tx, rx) = channel();
                 for i in 1..12 {
                     let tx = tx.clone();
-                    pool.execute(Thunk::of(
-                        move || { tx.send(i).expect("channel will be waiting"); },
-                    ));
+                    pool.execute(Thunk::of(move || {
+                        tx.send(i).expect("channel will be waiting");
+                    }));
                 }
                 drop(tx);
-                rx.iter().fold(
-                    1,
-                    |accumulator, element| accumulator * element,
-                )
+                rx.iter()
+                    .fold(1, |accumulator, element| accumulator * element)
             })
         };
 
         assert_eq!(
             861,
-            t0.join().expect(
-                "thread 0 will return after calculating additions",
-            )
+            t0.join()
+                .expect("thread 0 will return after calculating additions",)
         );
         assert_eq!(
             39916800,
-            t1.join().expect(
-                "thread 1 will return after calculating multiplications",
-            )
+            t1.join()
+                .expect("thread 1 will return after calculating multiplications",)
         );
     }
 
@@ -1505,10 +1502,9 @@ mod test {
         let n_cycles = 4;
         let n_workers = 4;
         let (tx, rx) = channel();
-        let builder = Builder::new().num_threads(n_workers).thread_name(
-            "join wavesurfer"
-                .into(),
-        );
+        let builder = Builder::new()
+            .num_threads(n_workers)
+            .thread_name("join wavesurfer".into());
         let p_waiter = builder.clone().build::<ThunkWorker<()>>();
         let p_clock = builder.build::<ThunkWorker<()>>();
 
