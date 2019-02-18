@@ -23,7 +23,7 @@ pub trait Worker : Default {
 
 ```toml
 [dependencies]
-workerpool = "1.1"
+workerpool = "1.2"
 ```
 
 To use [crossbeam's
@@ -33,7 +33,7 @@ enable the `crossbeam` feature:
 
 ```toml
 [dependencies]
-workerpool = { version = "1.1", features = ["crossbeam"] }
+workerpool = { version = "1.2", features = ["crossbeam"] }
 ```
 
 This crate provides `Pool<W> where W: Worker`. With a pool, there are four
