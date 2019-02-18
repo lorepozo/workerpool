@@ -26,6 +26,16 @@ pub trait Worker : Default {
 workerpool = "1.1"
 ```
 
+To use [crossbeam's
+channels](https://docs.rs/crossbeam-channel/0.3.8/crossbeam_channel/)
+instead of [`std::sync::mpsc`](https://doc.rust-lang.org/stable/std/sync/mpsc/),
+enable the `crossbeam` feature:
+
+```toml
+[dependencies]
+workerpool = { version = "1.1", features = ["crossbeam"] }
+```
+
 This crate provides `Pool<W> where W: Worker`. With a pool, there are four
 primary functions of interest:
 - `Pool::<MyWorker>::new(n_threads)` creates a new pool for a particular `Worker`.

@@ -13,6 +13,10 @@ A thread pool for running a number of jobs on a fixed set of stateful worker thr
 keywords = ["worker", "thread", "pool", "threading", "parallelism"]
 categories = ["concurrency", "os"]
 
+[features]
+crossbeam = ["crossbeam-channel"]
+
 [dependencies]
 num_cpus = "1.7"
 parking_lot = "0.7"
+crossbeam-channel = { version = "0.3", optional = true }

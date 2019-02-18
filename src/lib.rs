@@ -1,4 +1,4 @@
-// Copyright 2017 Lucas Morales <lucas@lucasem.com>
+// Copyright 2017-2019 Lucas Morales <lucas@lucasem.com>
 // Derived from work according to the following notices:
 //
 // Copyright 2014 The Rust Project Developers. See the COPYRIGHT
@@ -26,6 +26,9 @@
 //! }
 //! ```
 //!
+//! The [`Pool`] api manages workers and tasks. Enable the `crossbeam` feature if you want to use
+//! crossbeam's channels rather than [`std::sync::mpsc`] for the pool's task management.
+//!
 //! # Examples
 //!
 //! A worker is provided in [`workerpool::thunk`], a stateless [`ThunkWorker<T>`]. It executes on
@@ -34,9 +37,12 @@
 //!
 //! ```
 //! # extern crate workerpool;
+//! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
+//! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
+//! # #[cfg(not(feature = "crossbeam"))]
+//! use std::sync::mpsc::channel;
 //! use workerpool::Pool;
 //! use workerpool::thunk::{Thunk, ThunkWorker};
-//! use std::sync::mpsc::channel;
 //!
 //! fn main() {
 //!     let n_workers = 4;
@@ -61,11 +67,14 @@
 //!
 //! ```
 //! # extern crate workerpool;
+//! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
+//! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
+//! # #[cfg(not(feature = "crossbeam"))]
+//! use std::sync::mpsc::channel;
 //! use workerpool::{Worker, Pool};
 //! use std::process::{Command, ChildStdin, ChildStdout, Stdio};
 //! use std::io::prelude::*;
 //! use std::io::{self, BufReader};
-//! use std::sync::mpsc::channel;
 //!
 //! struct LineDelimitedProcess {
 //!     stdin: ChildStdin,
@@ -128,14 +137,22 @@
 //! [`ThunkWorker<T>`]: thunk/struct.ThunkWorker.html
 //! [`Thunk::of`]: thunk/struct.Thunk.html#method.of
 //! [`Thunk<T>`]: thunk/struct.Thunk.html
+//! [`Pool`]: struct.Pool.html
+//! [`std::sync::mpsc`]: https://doc.rust-lang.org/stable/std/sync/mpsc/
 
+#[cfg(feature = "crossbeam")]
+extern crate crossbeam_channel;
 extern crate num_cpus;
 extern crate parking_lot;
+
+#[cfg(feature = "crossbeam")]
+use crossbeam_channel::{unbounded as channel, Receiver, Sender};
+#[cfg(not(feature = "crossbeam"))]
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use parking_lot::{Condvar, Mutex};
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
 
@@ -577,6 +594,8 @@ impl<T: Worker> Pool<T> {
 
     /// Executes with the input on a worker in the pool.
     /// Non-blocking and sends output of the worker's execution to the given sender.
+    /// If you want to use [`crossbeam_channel::Sender`] instead of
+    /// [`std::sync::mpsc::Sender`], enable the `crossbeam` feature for this library.
     ///
     /// # Examples
     ///
@@ -584,9 +603,12 @@ impl<T: Worker> Pool<T> {
     ///
     /// ```
     /// # extern crate workerpool;
+    /// # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
+    /// # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
+    /// # #[cfg(not(feature = "crossbeam"))]
+    /// use std::sync::mpsc::channel;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
-    /// use std::sync::mpsc::channel;
     ///
     /// # fn main() {
     /// let pool: Pool<ThunkWorker<i32>> = Pool::new(2);
@@ -598,6 +620,8 @@ impl<T: Worker> Pool<T> {
     /// assert_eq!(10, rx.iter().take(4).sum());
     /// # }
     /// ```
+    /// [`crossbeam_channel::Sender`]: http://docs.rs/crossbeam-channel/*/crossbeam_channel/struct.Sender.html
+    /// [`std::sync::mpsc::Sender`]: https://doc.rust-lang.org/stable/std/sync/mpsc/struct.Sender.html
     pub fn execute_to(&self, tx: Sender<T::Output>, inp: T::Input) {
         self.shared_data.queued_count.fetch_add(1, Ordering::SeqCst);
         let job = (inp, Some(tx));
@@ -932,9 +956,12 @@ pub mod thunk {
     //!
     //! ```
     //! # extern crate workerpool;
+    //! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
+    //! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
+    //! # #[cfg(not(feature = "crossbeam"))]
+    //! use std::sync::mpsc::channel;
     //! use workerpool::Pool;
     //! use workerpool::thunk::{Thunk, ThunkWorker};
-    //! use std::sync::mpsc::channel;
     //!
     //! # fn main() {
     //! let n_workers = 4;
