@@ -1,4 +1,4 @@
-// Copyright 2017-2019 Lucas Morales <lucas@lucasem.com>
+// Copyright 2017-2024 Lore Anaya Pozo <lore.a.pozo@outlook.com>
 // Derived from work according to the following notices:
 //
 // Copyright 2014 The Rust Project Developers. See the COPYRIGHT

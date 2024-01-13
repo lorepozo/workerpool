@@ -1,11 +1,11 @@
 [package]
 name = "workerpool"
 version = "1.2.0"
-authors = ["The Rust Project Developers", "Corey Farwell <coreyf@rwell.org>", "Stefan Schindler <dns2utf8@estada.ch>", "Lucas Morales <lucas@lucasem.com>"]
+authors = ["The Rust Project Developers", "Corey Farwell <coreyf@rwell.org>", "Stefan Schindler <dns2utf8@estada.ch>", "Lore Anaya Pozo <lore.a.pozo@outlook.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/lucasem/workerpool"
-homepage = "https://github.com/lucasem/workerpool"
+repository = "https://github.com/lorepozo/workerpool"
+homepage = "https://github.com/lorepozo/workerpool"
 documentation = "https://docs.rs/workerpool"
 description = """
 A thread pool for running a number of jobs on a fixed set of stateful worker threads.
