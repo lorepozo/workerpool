@@ -51,8 +51,6 @@ are `Sized + Send`. These thunks are creates by wrapping functions which
 return `T` with `Thunk::of`.
 
 ```rust
-extern crate workerpool;
-
 use workerpool::Pool;
 use workerpool::thunk::{Thunk, ThunkWorker};
 use std::sync::mpsc::channel;
@@ -79,8 +77,6 @@ and use a worker, with maintained state of the stdin/stdout for the process,
 as follows:
 
 ```rust
-extern crate workerpool;
-
 use workerpool::{Worker, Pool};
 use std::process::{Command, ChildStdin, ChildStdout, Stdio};
 use std::io::prelude::*;

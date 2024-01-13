@@ -12,11 +12,13 @@ A thread pool for running a number of jobs on a fixed set of stateful worker thr
 """
 keywords = ["worker", "thread", "pool", "threading", "parallelism"]
 categories = ["concurrency", "os"]
+edition = "2021"
+rust-version = "1.60"
 
 [features]
 crossbeam = ["crossbeam-channel"]
 
 [dependencies]
 num_cpus = "1.7"
-parking_lot = "0.7"
-crossbeam-channel = { version = "0.3", optional = true }
+parking_lot = "0.12"
+crossbeam-channel = { version = "0.5", optional = true }

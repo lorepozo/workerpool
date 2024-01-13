@@ -22,7 +22,7 @@
 //!     type Input: Send;
 //!     type Output: Send;
 //!
-//!     fn execute(&mut self, Self::Input) -> Self::Output;
+//!     fn execute(&mut self, _: Self::Input) -> Self::Output;
 //! }
 //! ```
 //!
@@ -36,8 +36,6 @@
 //! thunks are creates by wrapping functions which return `T` with [`Thunk::of`].
 //!
 //! ```
-//! # extern crate workerpool;
-//! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
 //! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
 //! # #[cfg(not(feature = "crossbeam"))]
 //! use std::sync::mpsc::channel;
@@ -66,8 +64,6 @@
 //! as follows:
 //!
 //! ```
-//! # extern crate workerpool;
-//! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
 //! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
 //! # #[cfg(not(feature = "crossbeam"))]
 //! use std::sync::mpsc::channel;
@@ -141,11 +137,6 @@
 //! [`std::sync::mpsc`]: https://doc.rust-lang.org/stable/std/sync/mpsc/
 
 #[cfg(feature = "crossbeam")]
-extern crate crossbeam_channel;
-extern crate num_cpus;
-extern crate parking_lot;
-
-#[cfg(feature = "crossbeam")]
 use crossbeam_channel::{unbounded as channel, Receiver, Sender};
 #[cfg(not(feature = "crossbeam"))]
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -161,7 +152,7 @@ pub trait Worker: Default + 'static {
     type Input: Send;
     type Output: Send;
 
-    fn execute(&mut self, Self::Input) -> Self::Output;
+    fn execute(&mut self, _: Self::Input) -> Self::Output;
 }
 
 fn spawn_in_pool<T>(shared_data: Arc<PoolSharedData<T>>)
@@ -204,9 +195,9 @@ where
                 shared_data.active_count.fetch_add(1, Ordering::SeqCst);
                 shared_data.queued_count.fetch_sub(1, Ordering::SeqCst);
 
-                let output = executor.execute(job.0);
-                if let Some(tx) = job.1 {
-                    if let Err(..) = tx.send(output) {
+                let output = executor.execute(job.inp);
+                if let Some(tx) = job.sender {
+                    if tx.send(output).is_err() {
                         break;
                     }
                 };
@@ -231,7 +222,7 @@ where
 impl<T: Worker> Sentinel<T> {
     fn new(shared_data: Arc<PoolSharedData<T>>) -> Sentinel<T> {
         Sentinel {
-            shared_data: shared_data,
+            shared_data,
             active: true,
         }
     }
@@ -274,7 +265,6 @@ impl<T: Worker> Drop for Sentinel<T> {
 /// a 8 MB stack size:
 ///
 /// ```
-/// # extern crate workerpool;
 /// # type MyWorker = workerpool::thunk::ThunkWorker<()>;
 /// let pool = workerpool::Builder::new()
 ///     .num_threads(8)
@@ -296,7 +286,6 @@ impl Builder {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// let builder = workerpool::Builder::new();
     /// ```
     pub fn new() -> Builder {
@@ -321,7 +310,6 @@ impl Builder {
     /// No more than eight threads will be alive simultaneously for this pool:
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use std::thread;
     /// use workerpool::{Builder, Pool};
     /// use workerpool::thunk::{Thunk, ThunkWorker};
@@ -354,7 +342,6 @@ impl Builder {
     /// Each thread spawned by this pool will have the name "foo":
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use std::thread;
     /// use workerpool::{Builder, Pool};
     /// use workerpool::thunk::{Thunk, ThunkWorker};
@@ -389,7 +376,6 @@ impl Builder {
     /// Each thread spawned by this pool will have a 4 MB stack:
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # use workerpool::{Builder, Pool};
     /// # use workerpool::thunk::{Thunk, ThunkWorker};
     /// # fn main() {
@@ -429,7 +415,7 @@ impl Builder {
     where
         T: Worker,
     {
-        let (tx, rx) = channel::<(T::Input, Option<Sender<T::Output>>)>();
+        let (tx, rx) = channel::<Job<T::Input, T::Output>>();
 
         let num_threads = self.num_threads.unwrap_or_else(num_cpus::get);
 
@@ -452,10 +438,15 @@ impl Builder {
         }
 
         Pool {
-            jobs: Arc::new(Mutex::new(tx)),
-            shared_data: shared_data,
+            jobs: tx,
+            shared_data,
         }
     }
+}
+
+struct Job<I, O> {
+    inp: I,
+    sender: Option<Sender<O>>,
 }
 
 struct PoolSharedData<T>
@@ -463,7 +454,7 @@ where
     T: Worker,
 {
     name: Option<String>,
-    job_receiver: Mutex<Receiver<(T::Input, Option<Sender<T::Output>>)>>,
+    job_receiver: Mutex<Receiver<Job<T::Input, T::Output>>>,
     empty_trigger: Mutex<()>,
     empty_condvar: Condvar,
     join_generation: AtomicUsize,
@@ -497,7 +488,7 @@ where
     //
     // This is the only such Sender, so when it is dropped all subthreads will
     // quit.
-    jobs: Arc<Mutex<Sender<(T::Input, Option<Sender<T::Output>>)>>>,
+    jobs: Sender<Job<T::Input, T::Output>>,
     shared_data: Arc<PoolSharedData<T>>,
 }
 
@@ -513,7 +504,6 @@ impl<T: Worker> Pool<T> {
     /// Create a new thread pool capable of executing four jobs concurrently:
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # type MyWorker = workerpool::thunk::ThunkWorker<()>;
     /// use workerpool::Pool;
     ///
@@ -535,7 +525,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```rust
-    /// # extern crate workerpool;
     /// use std::thread;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
@@ -570,7 +559,6 @@ impl<T: Worker> Pool<T> {
     /// Execute four jobs on a thread pool that can run two jobs concurrently:
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     ///
@@ -585,9 +573,8 @@ impl<T: Worker> Pool<T> {
     /// ```
     pub fn execute(&self, inp: T::Input) {
         self.shared_data.queued_count.fetch_add(1, Ordering::SeqCst);
-        let job = (inp, None);
+        let job = Job { inp, sender: None };
         self.jobs
-            .lock()
             .send(job)
             .expect("Pool::execute unable to send job into queue.");
     }
@@ -602,8 +589,6 @@ impl<T: Worker> Pool<T> {
     /// Execute four jobs on a thread pool that can run two jobs concurrently:
     ///
     /// ```
-    /// # extern crate workerpool;
-    /// # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
     /// # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
     /// # #[cfg(not(feature = "crossbeam"))]
     /// use std::sync::mpsc::channel;
@@ -624,9 +609,11 @@ impl<T: Worker> Pool<T> {
     /// [`std::sync::mpsc::Sender`]: https://doc.rust-lang.org/stable/std/sync/mpsc/struct.Sender.html
     pub fn execute_to(&self, tx: Sender<T::Output>, inp: T::Input) {
         self.shared_data.queued_count.fetch_add(1, Ordering::SeqCst);
-        let job = (inp, Some(tx));
+        let job = Job {
+            inp,
+            sender: Some(tx),
+        };
         self.jobs
-            .lock()
             .send(job)
             .expect("Pool::execute unable to send job into queue.");
     }
@@ -636,7 +623,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     /// use std::time::Duration;
@@ -663,7 +649,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     /// use std::time::Duration;
@@ -690,7 +675,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # type MyWorker = workerpool::thunk::ThunkWorker<()>;
     /// use workerpool::Pool;
     ///
@@ -711,7 +695,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     ///
@@ -745,7 +728,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     /// use std::time::Duration;
@@ -806,7 +788,6 @@ impl<T: Worker> Pool<T> {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     /// use std::sync::Arc;
@@ -843,10 +824,11 @@ impl<T: Worker> Pool<T> {
         }
 
         // increase generation if we are the first thread to come out of the loop
-        self.shared_data.join_generation.compare_and_swap(
+        let _ = self.shared_data.join_generation.compare_exchange(
             generation,
             generation.wrapping_add(1),
             Ordering::SeqCst,
+            Ordering::Relaxed,
         );
     }
 }
@@ -858,7 +840,6 @@ impl<T: Worker> Clone for Pool<T> {
     /// We could for example submit jobs from multiple threads concurrently.
     ///
     /// ```
-    /// # extern crate workerpool;
     /// use workerpool::Pool;
     /// use workerpool::thunk::{Thunk, ThunkWorker};
     /// use std::thread;
@@ -894,7 +875,7 @@ impl<T: Worker> Clone for Pool<T> {
     /// ```
     fn clone(&self) -> Pool<T> {
         Pool {
-            jobs: Arc::clone(&self.jobs),
+            jobs: self.jobs.clone(),
             shared_data: Arc::clone(&self.shared_data),
         }
     }
@@ -924,7 +905,6 @@ impl<T: Worker> PartialEq for Pool<T> {
     /// Check if you are working with the same pool
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # type MyWorker = workerpool::thunk::ThunkWorker<()>;
     /// use workerpool::Pool;
     ///
@@ -955,8 +935,6 @@ pub mod thunk {
     //! # Examples
     //!
     //! ```
-    //! # extern crate workerpool;
-    //! # #[cfg(feature = "crossbeam")] extern crate crossbeam_channel;
     //! # #[cfg(feature = "crossbeam")] use crossbeam_channel::unbounded as channel;
     //! # #[cfg(not(feature = "crossbeam"))]
     //! use std::sync::mpsc::channel;
@@ -1001,7 +979,6 @@ pub mod thunk {
     /// # Examples
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # use workerpool::thunk::Thunk;
     /// # fn main() {
     /// let thunk: Thunk<u8> = Thunk::of(|| 127u8);
@@ -1009,7 +986,6 @@ pub mod thunk {
     /// ```
     ///
     /// ```
-    /// # extern crate workerpool;
     /// # use workerpool::thunk::Thunk;
     /// fn my_function() -> Option<String> {
     ///     None
@@ -1020,7 +996,7 @@ pub mod thunk {
     /// ```
     ///
     /// [`Thunk::of`]: #method.of.html
-    pub struct Thunk<'a, T>(Box<FnBox<Out = T> + Send + 'a>);
+    pub struct Thunk<'a, T>(Box<dyn FnBox<Out = T> + Send + 'a>);
     impl<'a, T> Thunk<'a, T> {
         pub fn of<F>(f: F) -> Self
         where
@@ -1127,7 +1103,7 @@ mod test {
             }));
         }
 
-        assert_eq!(rx.iter().take(TEST_TASKS).fold(0, |a, b| a + b), TEST_TASKS);
+        assert_eq!(rx.iter().take(TEST_TASKS).sum::<usize>(), TEST_TASKS);
     }
 
     #[test]
@@ -1157,7 +1133,7 @@ mod test {
             }));
         }
 
-        assert_eq!(rx.iter().take(TEST_TASKS).fold(0, |a, b| a + b), TEST_TASKS);
+        assert_eq!(rx.iter().take(TEST_TASKS).sum::<usize>(), TEST_TASKS);
     }
 
     #[test]
@@ -1202,7 +1178,7 @@ mod test {
                     b1.wait();
                 }
 
-                tx.send(1).is_ok();
+                assert!(tx.send(1).is_ok());
             }));
         }
 
@@ -1210,7 +1186,7 @@ mod test {
         assert_eq!(pool.active_count(), TEST_TASKS);
         b1.wait();
 
-        assert_eq!(rx.iter().take(test_tasks).fold(0, |a, b| a + b), test_tasks);
+        assert_eq!(rx.iter().take(test_tasks).sum::<usize>(), test_tasks);
         pool.join();
 
         let atomic_active_count = pool.active_count();
@@ -1386,10 +1362,7 @@ mod test {
         error(format!("pool0.join() complete =-= {:?}", pool1));
         pool1.join();
         error("pool1.join() complete\n".into());
-        assert_eq!(
-            rx.iter().fold(0, |acc, i| acc + i),
-            0 + 1 + 2 + 3 + 4 + 5 + 6 + 7
-        );
+        assert_eq!(rx.iter().sum::<i32>(), 1 + 2 + 3 + 4 + 5 + 6 + 7);
     }
 
     #[test]
@@ -1398,8 +1371,6 @@ mod test {
         let pool = Pool::<ThunkWorker<()>>::new(4);
 
         pool.join();
-
-        assert!(true);
     }
 
     #[test]
@@ -1450,8 +1421,7 @@ mod test {
                     }));
                 }
                 drop(tx);
-                rx.iter()
-                    .fold(0, |accumulator, element| accumulator + element)
+                rx.iter().sum::<i32>()
             })
         };
         let t1 = {
@@ -1468,8 +1438,7 @@ mod test {
                     }));
                 }
                 drop(tx);
-                rx.iter()
-                    .fold(1, |accumulator, element| accumulator * element)
+                rx.iter().product::<i32>()
             })
         };
 
