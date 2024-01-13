@@ -1,6 +1,6 @@
 [package]
 name = "workerpool"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["The Rust Project Developers", "Corey Farwell <coreyf@rwell.org>", "Stefan Schindler <dns2utf8@estada.ch>", "Lore Anaya Pozo <lore.a.pozo@outlook.com>"]
 license = "MIT/Apache-2.0"
 readme = "README.md"
