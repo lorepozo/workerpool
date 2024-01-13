@@ -1,6 +1,6 @@
 # workerpool
 
-[![Build Status](https://travis-ci.org/lucasem/workerpool.svg?branch=master)](https://travis-ci.org/lucasem/workerpool)
+[![CI](https://github.com/lorepozo/workerpool/actions/workflows/ci.yaml/badge.svg)](https://github.com/lorepozo/workerpool/actions/workflows/ci.yaml)
 [![crates.io](https://img.shields.io/crates/v/workerpool.svg)](https://crates.io/crates/workerpool)
 [![docs.rs](https://docs.rs/workerpool/badge.svg)](https://docs.rs/workerpool)
 
